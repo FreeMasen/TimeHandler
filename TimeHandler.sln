@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 15
+VisualStudioVersion = 15.0.28307.438
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TimeHandler", "TimeHandler\TimeHandler.csproj", "{EB0519AC-4101-40F7-94E6-9BB267F8E3C0}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{EB0519AC-4101-40F7-94E6-9BB267F8E3C0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EB0519AC-4101-40F7-94E6-9BB267F8E3C0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EB0519AC-4101-40F7-94E6-9BB267F8E3C0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EB0519AC-4101-40F7-94E6-9BB267F8E3C0}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {3FA728BC-F564-457F-90DD-E00D4780BBCF}
+	EndGlobalSection
+EndGlobal
