@@ -1,0 +1,5 @@
+/.vs
+/packages
+/TimeHandler/bin
+/TimeHandler/obj
+/TimeHandler/App.config

@@ -2,18 +2,16 @@
 using System.IO;
 using System.Collections.Generic;
 using System.Linq;
+using System.Collections;
 
 namespace TimeHandler
 {
     class TimeCalculator
     {
-        private FileSystemWatcher Watcher;
         public event EventHandler<EventArgs> RunCalculation;
         public event EventHandler<WeekUpdatedEventArgs> CalculationComplete;
         public TimeCalculator()
         {
-            this.Watcher = new FileSystemWatcher(TrayContext.APP_DATA_PATH);
-            this.Watcher.Changed += this.FileChanged;
             this.StartCalculation();
             this.RunCalculation += this.OnRequestStartCalculation;
             this.AddStartOfDay();
@@ -24,8 +22,8 @@ namespace TimeHandler
             var now = DateTime.Now;
             var start = now.AddMinutes(30);
             this.AddEntries(new List<TimeEntry>() {
-                new TimeEntry {when = start, what = TimeEntryEvent.StartOfBreak },
-                new TimeEntry {when = now, what = TimeEntryEvent.EndOfBreak },
+                new TimeEntry {When = start, What = TimeEntryEvent.StartOfBreak },
+                new TimeEntry {When = now, What = TimeEntryEvent.EndOfBreak },
             });
         }
 
@@ -44,17 +42,6 @@ namespace TimeHandler
             Data.AddStartOfDay();
         }
 
-
-        public void FileChanged(object sender, FileSystemEventArgs args)
-        {
-            switch (args.ChangeType)
-            {
-                case WatcherChangeTypes.Changed:
-                    this.StartCalculation();
-                break;
-            }
-        }
-
         public void FireCalculation()
         {
             if (this.RunCalculation != null)
@@ -70,14 +57,10 @@ namespace TimeHandler
 
         private void StartCalculation()
         {
-            var path = $"{Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)}\\calendar_info";
-            var events = Data.GetThisWeeksEntries();
-                
-            this.Calculate(events);
-            
+            this.Calculate();
         }
 
-        private void Calculate(IEnumerable<TimeEntry> info)
+        private void Calculate()
         {
             var week = Data.GetThisWeek();
             if (this.CalculationComplete != null)
@@ -88,22 +71,228 @@ namespace TimeHandler
                 );
             }
         }
+
+        public PtoWeekEntrys GetWeekPto(DateTime date)
+        {
+            var monday = Data.Monday(date);
+            var entries = Data.GetEntriesFor(monday, monday.AddDays(7)).Where(entry => entry.IsPto);
+            return entries.Aggregate(new PtoWeekEntrys(), PtoAggregator);
+        }
+
+        private PtoWeekEntrys PtoAggregator(PtoWeekEntrys acc, TimeEntry entry)
+        {
+            switch (entry.When.DayOfWeek)
+            {
+                case DayOfWeek.Monday:
+                    TimeOfDayHandler(acc.Monday, entry);
+                    break;
+                case DayOfWeek.Tuesday:
+                    TimeOfDayHandler(acc.Tuesday, entry);
+                    break;
+                case DayOfWeek.Wednesday:
+                    TimeOfDayHandler(acc.Wednesday, entry);
+                    break;
+                case DayOfWeek.Thursday:
+                    TimeOfDayHandler(acc.Thursday, entry);
+                    break;
+                case DayOfWeek.Friday:
+                    TimeOfDayHandler(acc.Friday, entry);
+                    break;
+                case DayOfWeek.Saturday:
+                    TimeOfDayHandler(acc.Saturday, entry);
+                    break;
+                case DayOfWeek.Sunday:
+                    TimeOfDayHandler(acc.Sunday, entry);
+                    break;
+
+            }
+            return acc;
+        }
+        private void TimeOfDayHandler(PtoWeekEntry day, TimeEntry time)
+        {
+            switch (time.What)
+            {
+                case TimeEntryEvent.StartOfDay:
+                    day.Start = time;
+                    break;
+                case TimeEntryEvent.EndOfDay:
+                    day.End = time;
+                    break;
+            }
+        }
     }
 
     
 
-    class WeekEntrys
+    public class PtoWeekEntrys : IEnumerable<PtoWeekEntry>
     {
-        public List<TimeEntry> Monday = new List<TimeEntry>();
-        public List<TimeEntry> Tuesday = new List<TimeEntry>();
-        public List<TimeEntry> Wednesday = new List<TimeEntry>();
-        public List<TimeEntry> Thursday = new List<TimeEntry>();
-        public List<TimeEntry> Friday = new List<TimeEntry>();
-        public List<TimeEntry> Saturday = new List<TimeEntry>();
-        public List<TimeEntry> Sunday = new List<TimeEntry>();
+        public PtoWeekEntry Monday = new PtoWeekEntry(DayOfWeek.Monday);
+        public PtoWeekEntry Tuesday = new PtoWeekEntry(DayOfWeek.Tuesday);
+        public PtoWeekEntry Wednesday = new PtoWeekEntry(DayOfWeek.Wednesday);
+        public PtoWeekEntry Thursday = new PtoWeekEntry(DayOfWeek.Thursday);
+        public PtoWeekEntry Friday = new PtoWeekEntry(DayOfWeek.Friday);
+        public PtoWeekEntry Saturday = new PtoWeekEntry(DayOfWeek.Saturday);
+        public PtoWeekEntry Sunday = new PtoWeekEntry(DayOfWeek.Sunday);
+
+        IEnumerator<PtoWeekEntry> IEnumerable<PtoWeekEntry>.GetEnumerator()
+        {
+            return new PtoWeekEnumerator(this);
+        }
+
+        IEnumerator IEnumerable.GetEnumerator()
+        {
+            return new PtoWeekEnumerator(this);
+        }
     }
 
-    struct Week
+    public class PtoWeekEnumerator : IEnumerator<PtoWeekEntry>
+    {
+        private int currentIdx = -1;
+        private readonly PtoWeekEntrys Inner;
+        public PtoWeekEnumerator(PtoWeekEntrys inner)
+        {
+            this.Inner = inner;
+        }
+
+        PtoWeekEntry IEnumerator<PtoWeekEntry>.Current => this.GetCurrent();
+
+        object IEnumerator.Current => this.GetCurrent();
+
+        private PtoWeekEntry GetCurrent()
+        {
+            switch (this.currentIdx)
+            {
+                case 0:
+                    return this.Inner.Monday;
+                case 1:
+                    return this.Inner.Tuesday;
+                case 2:
+                    return this.Inner.Wednesday;
+                case 3:
+                    return this.Inner.Thursday;
+                case 4:
+                    return this.Inner.Friday;
+                case 5:
+                    return this.Inner.Saturday;
+                case 6:
+                    return this.Inner.Sunday;
+                default:
+                    return null;
+            }
+        }
+
+        bool IEnumerator.MoveNext()
+        {
+            this.currentIdx += 1;
+            if (this.currentIdx > 6)
+            {
+                return false;
+            }
+            return true;
+        }
+
+        void IEnumerator.Reset()
+        {
+            this.currentIdx = -1;
+        }
+
+        #region IDisposable Support
+        private bool disposedValue = false; // To detect redundant calls
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!disposedValue)
+            {
+                if (disposing)
+                {
+                    // TODO: dispose managed state (managed objects).
+                }
+
+                // TODO: free unmanaged resources (unmanaged objects) and override a finalizer below.
+                // TODO: set large fields to null.
+
+                disposedValue = true;
+            }
+        }
+
+        // TODO: override a finalizer only if Dispose(bool disposing) above has code to free unmanaged resources.
+        // ~PtoWeekEnumerator() {
+        //   // Do not change this code. Put cleanup code in Dispose(bool disposing) above.
+        //   Dispose(false);
+        // }
+
+        // This code added to correctly implement the disposable pattern.
+        void IDisposable.Dispose()
+        {
+            // Do not change this code. Put cleanup code in Dispose(bool disposing) above.
+            Dispose(true);
+            // TODO: uncomment the following line if the finalizer is overridden above.
+            // GC.SuppressFinalize(this);
+        }
+        #endregion
+
+    }
+
+    public class PtoWeekEntry
+    {
+        public TimeEntry Start;
+        public TimeEntry End;
+        public DayOfWeek Dow;
+        public PtoWeekEntry(DayOfWeek dow)
+        {
+            this.Dow = dow;
+        }
+        public void SetNewEnd(double minutes)
+        {
+            if (this.Start == null)
+            {
+                return;
+            }
+            this.End.When = this.Start.When.AddMinutes(minutes);
+        }
+
+        public Time CalculateDiff()
+        {
+            if (Start == null)
+            {
+                return new Time(0, 0);
+            }
+            if (End == null)
+            {
+                return new Time(8, 0);
+            }
+            var total = (End.When - Start.When).TotalMinutes;
+            var hours = (int)Math.Floor(total / 60);
+            var minutes = (int)(total - (double)hours * 60.0);
+            return new Time(hours, minutes);
+        }
+
+        public double CalculateSimpleDiff()
+        {
+            if (Start == null)
+            {
+                return 0.0;
+            }
+            if (End == null)
+            {
+                return 8.0 * 60.0;
+            }
+            return (End.When - Start.When).TotalMinutes;
+        }
+    }
+
+    public struct Time
+    {
+        public int Hours;
+        public int Minutes;
+        public Time(int hours, int minutes)
+        {
+            this.Hours = hours;
+            this.Minutes = minutes;
+        }
+    }
+
+    public struct Week: IEnumerable<int>
     {
         public int Monday;
         public int Tuesday;
@@ -127,13 +316,46 @@ namespace TimeHandler
         }
         public int Total()
         {
-            return this.Monday 
-                    + this.Tuesday
-                    + this.Wednesday
-                    + this.Thursday
-                    + this.Friday
-                    + this.Saturday
-                    + this.Sunday;
+            var ret = 0;
+            switch (DateTime.Now.DayOfWeek)
+            {
+                case DayOfWeek.Monday:
+                    return this.Monday;
+                case DayOfWeek.Tuesday:
+                    return this.Monday 
+                        + this.Tuesday;
+                case DayOfWeek.Wednesday:
+                    return this.Monday
+                        + this.Tuesday
+                        + this.Wednesday;
+                case DayOfWeek.Thursday:
+                    return this.Monday
+                        + this.Tuesday
+                        + this.Wednesday
+                        + this.Thursday;
+                case DayOfWeek.Friday:
+                    return this.Monday
+                        + this.Tuesday
+                        + this.Wednesday
+                        + this.Thursday
+                        + this.Friday;
+                case DayOfWeek.Saturday:
+                    return this.Monday
+                        + this.Tuesday
+                        + this.Wednesday
+                        + this.Thursday
+                        + this.Friday
+                        + this.Saturday;
+                default:
+                    return this.Monday
+                        + this.Tuesday
+                        + this.Wednesday
+                        + this.Thursday
+                        + this.Friday
+                        + this.Saturday
+                        + this.Sunday;
+            }
+            
         }
 
         public int Expectation()
@@ -190,5 +412,100 @@ namespace TimeHandler
                 && this.Saturday == other.Saturday
                 && this.Sunday == other.Sunday;
         }
+
+        IEnumerator<int> IEnumerable<int>.GetEnumerator()
+        {
+            return new WeekEnumerator(this);
+        }
+
+        IEnumerator IEnumerable.GetEnumerator()
+        {
+            return new WeekEnumerator(this);
+        }
+    }
+
+    public class WeekEnumerator : IEnumerator<int>
+    {
+        private readonly Week Inner;
+        private int currentIdx = -1;
+        public WeekEnumerator(Week inner)
+        {
+            this.Inner = inner;
+        }
+
+        int IEnumerator<int>.Current => this.GetCurrent();
+
+        object IEnumerator.Current => this.GetCurrent();
+        private int GetCurrent()
+        {
+            switch (this.currentIdx)
+            {
+                case 0:
+                    return this.Inner.Monday;
+                case 1:
+                    return this.Inner.Tuesday;
+                case 2:
+                    return this.Inner.Wednesday;
+                case 3:
+                    return this.Inner.Thursday;
+                case 4:
+                    return this.Inner.Friday;
+                case 5:
+                    return this.Inner.Saturday;
+                case 6:
+                    return this.Inner.Sunday;
+                default:
+                    return 0;
+            }
+        }
+        bool IEnumerator.MoveNext()
+        {
+            this.currentIdx += 1;
+            if (this.currentIdx > 6)
+            {
+                return false;
+            }
+            return true;
+        }
+
+        void IEnumerator.Reset()
+        {
+            this.currentIdx = -1;
+        }
+
+        #region IDisposable Support
+        private bool disposedValue = false; // To detect redundant calls
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!disposedValue)
+            {
+                if (disposing)
+                {
+                    // TODO: dispose managed state (managed objects).
+                }
+
+                // TODO: free unmanaged resources (unmanaged objects) and override a finalizer below.
+                // TODO: set large fields to null.
+
+                disposedValue = true;
+            }
+        }
+
+        // TODO: override a finalizer only if Dispose(bool disposing) above has code to free unmanaged resources.
+        // ~WeekEnumerator() {
+        //   // Do not change this code. Put cleanup code in Dispose(bool disposing) above.
+        //   Dispose(false);
+        // }
+
+        // This code added to correctly implement the disposable pattern.
+        void IDisposable.Dispose()
+        {
+            // Do not change this code. Put cleanup code in Dispose(bool disposing) above.
+            Dispose(true);
+            // TODO: uncomment the following line if the finalizer is overridden above.
+            // GC.SuppressFinalize(this);
+        }
+        #endregion
     }
 }

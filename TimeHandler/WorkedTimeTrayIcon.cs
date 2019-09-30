@@ -1,10 +1,5 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Windows.Forms;
-using System.Threading.Channels;
 
 namespace TimeHandler
 {
@@ -31,6 +26,8 @@ namespace TimeHandler
         
 
         public event EventHandler<WeekUpdatedEventArgs> RequestUpdate;
+        public event EventHandler<DayOfWeek> OnAdjustmentRequested;
+
         static private int WORKWEEK_MINUTES = 40 * 60;
         private Timer _timer;
         public WorkedTimeForm(Week week)
@@ -53,7 +50,6 @@ namespace TimeHandler
 
         private void InitializeComponent()
         {
-            this.components = new System.ComponentModel.Container();
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(WorkedTimeForm));
             this.label1 = new System.Windows.Forms.Label();
             this.label2 = new System.Windows.Forms.Label();
@@ -71,7 +67,6 @@ namespace TimeHandler
             this.lblMonday = new System.Windows.Forms.Label();
             this.lblTotal = new System.Windows.Forms.Label();
             this.label9 = new System.Windows.Forms.Label();
-            
             this.SuspendLayout();
             // 
             // label1
@@ -80,9 +75,10 @@ namespace TimeHandler
             this.label1.ForeColor = System.Drawing.Color.GhostWhite;
             this.label1.Location = new System.Drawing.Point(12, 10);
             this.label1.Name = "label1";
-            this.label1.Size = new System.Drawing.Size(19, 17);
+            this.label1.Size = new System.Drawing.Size(16, 13);
             this.label1.TabIndex = 0;
             this.label1.Text = "M";
+            this.label1.Click += new System.EventHandler(this.DayLabelClicked);
             // 
             // label2
             // 
@@ -90,9 +86,10 @@ namespace TimeHandler
             this.label2.ForeColor = System.Drawing.Color.GhostWhite;
             this.label2.Location = new System.Drawing.Point(12, 37);
             this.label2.Name = "label2";
-            this.label2.Size = new System.Drawing.Size(17, 17);
+            this.label2.Size = new System.Drawing.Size(14, 13);
             this.label2.TabIndex = 1;
             this.label2.Text = "T";
+            this.label2.Click += new System.EventHandler(this.DayLabelClicked);
             // 
             // label3
             // 
@@ -100,9 +97,10 @@ namespace TimeHandler
             this.label3.ForeColor = System.Drawing.Color.GhostWhite;
             this.label3.Location = new System.Drawing.Point(12, 64);
             this.label3.Name = "label3";
-            this.label3.Size = new System.Drawing.Size(21, 17);
+            this.label3.Size = new System.Drawing.Size(18, 13);
             this.label3.TabIndex = 2;
             this.label3.Text = "W";
+            this.label3.Click += new System.EventHandler(this.DayLabelClicked);
             // 
             // label4
             // 
@@ -110,9 +108,10 @@ namespace TimeHandler
             this.label4.ForeColor = System.Drawing.Color.GhostWhite;
             this.label4.Location = new System.Drawing.Point(12, 91);
             this.label4.Name = "label4";
-            this.label4.Size = new System.Drawing.Size(18, 17);
+            this.label4.Size = new System.Drawing.Size(15, 13);
             this.label4.TabIndex = 3;
             this.label4.Text = "R";
+            this.label4.Click += new System.EventHandler(this.DayLabelClicked);
             // 
             // label5
             // 
@@ -120,9 +119,10 @@ namespace TimeHandler
             this.label5.ForeColor = System.Drawing.Color.GhostWhite;
             this.label5.Location = new System.Drawing.Point(12, 118);
             this.label5.Name = "label5";
-            this.label5.Size = new System.Drawing.Size(16, 17);
+            this.label5.Size = new System.Drawing.Size(13, 13);
             this.label5.TabIndex = 4;
             this.label5.Text = "F";
+            this.label5.Click += new System.EventHandler(this.DayLabelClicked);
             // 
             // label6
             // 
@@ -130,9 +130,10 @@ namespace TimeHandler
             this.label6.ForeColor = System.Drawing.Color.GhostWhite;
             this.label6.Location = new System.Drawing.Point(12, 145);
             this.label6.Name = "label6";
-            this.label6.Size = new System.Drawing.Size(17, 17);
+            this.label6.Size = new System.Drawing.Size(14, 13);
             this.label6.TabIndex = 5;
             this.label6.Text = "S";
+            this.label6.Click += new System.EventHandler(this.DayLabelClicked);
             // 
             // label7
             // 
@@ -140,9 +141,10 @@ namespace TimeHandler
             this.label7.ForeColor = System.Drawing.Color.GhostWhite;
             this.label7.Location = new System.Drawing.Point(12, 172);
             this.label7.Name = "label7";
-            this.label7.Size = new System.Drawing.Size(18, 17);
+            this.label7.Size = new System.Drawing.Size(15, 13);
             this.label7.TabIndex = 6;
             this.label7.Text = "U";
+            this.label7.Click += new System.EventHandler(this.DayLabelClicked);
             // 
             // lblSunday
             // 
@@ -150,7 +152,7 @@ namespace TimeHandler
             this.lblSunday.ForeColor = System.Drawing.Color.GhostWhite;
             this.lblSunday.Location = new System.Drawing.Point(45, 172);
             this.lblSunday.Name = "lblSunday";
-            this.lblSunday.Size = new System.Drawing.Size(0, 17);
+            this.lblSunday.Size = new System.Drawing.Size(0, 13);
             this.lblSunday.TabIndex = 13;
             // 
             // lblSaturday
@@ -159,7 +161,7 @@ namespace TimeHandler
             this.lblSaturday.ForeColor = System.Drawing.Color.GhostWhite;
             this.lblSaturday.Location = new System.Drawing.Point(45, 145);
             this.lblSaturday.Name = "lblSaturday";
-            this.lblSaturday.Size = new System.Drawing.Size(0, 17);
+            this.lblSaturday.Size = new System.Drawing.Size(0, 13);
             this.lblSaturday.TabIndex = 12;
             // 
             // lblFriday
@@ -168,7 +170,7 @@ namespace TimeHandler
             this.lblFriday.ForeColor = System.Drawing.Color.GhostWhite;
             this.lblFriday.Location = new System.Drawing.Point(45, 118);
             this.lblFriday.Name = "lblFriday";
-            this.lblFriday.Size = new System.Drawing.Size(0, 17);
+            this.lblFriday.Size = new System.Drawing.Size(0, 13);
             this.lblFriday.TabIndex = 11;
             // 
             // lblThursday
@@ -177,7 +179,7 @@ namespace TimeHandler
             this.lblThursday.ForeColor = System.Drawing.Color.GhostWhite;
             this.lblThursday.Location = new System.Drawing.Point(45, 91);
             this.lblThursday.Name = "lblThursday";
-            this.lblThursday.Size = new System.Drawing.Size(0, 17);
+            this.lblThursday.Size = new System.Drawing.Size(0, 13);
             this.lblThursday.TabIndex = 10;
             // 
             // lblWednesday
@@ -186,7 +188,7 @@ namespace TimeHandler
             this.lblWednesday.ForeColor = System.Drawing.Color.GhostWhite;
             this.lblWednesday.Location = new System.Drawing.Point(45, 64);
             this.lblWednesday.Name = "lblWednesday";
-            this.lblWednesday.Size = new System.Drawing.Size(0, 17);
+            this.lblWednesday.Size = new System.Drawing.Size(0, 13);
             this.lblWednesday.TabIndex = 9;
             // 
             // lblTuesday
@@ -195,7 +197,7 @@ namespace TimeHandler
             this.lblTuesday.ForeColor = System.Drawing.Color.GhostWhite;
             this.lblTuesday.Location = new System.Drawing.Point(45, 37);
             this.lblTuesday.Name = "lblTuesday";
-            this.lblTuesday.Size = new System.Drawing.Size(0, 17);
+            this.lblTuesday.Size = new System.Drawing.Size(0, 13);
             this.lblTuesday.TabIndex = 8;
             // 
             // lblMonday
@@ -204,7 +206,7 @@ namespace TimeHandler
             this.lblMonday.ForeColor = System.Drawing.Color.GhostWhite;
             this.lblMonday.Location = new System.Drawing.Point(45, 10);
             this.lblMonday.Name = "lblMonday";
-            this.lblMonday.Size = new System.Drawing.Size(0, 17);
+            this.lblMonday.Size = new System.Drawing.Size(0, 13);
             this.lblMonday.TabIndex = 7;
             // 
             // lblTotal
@@ -214,7 +216,7 @@ namespace TimeHandler
             this.lblTotal.ForeColor = System.Drawing.Color.GhostWhite;
             this.lblTotal.Location = new System.Drawing.Point(45, 199);
             this.lblTotal.Name = "lblTotal";
-            this.lblTotal.Size = new System.Drawing.Size(0, 17);
+            this.lblTotal.Size = new System.Drawing.Size(0, 13);
             this.lblTotal.TabIndex = 15;
             // 
             // label9
@@ -224,7 +226,7 @@ namespace TimeHandler
             this.label9.ForeColor = System.Drawing.Color.GhostWhite;
             this.label9.Location = new System.Drawing.Point(12, 199);
             this.label9.Name = "label9";
-            this.label9.Size = new System.Drawing.Size(19, 17);
+            this.label9.Size = new System.Drawing.Size(16, 13);
             this.label9.TabIndex = 14;
             this.label9.Text = "R";
             // 
@@ -255,7 +257,6 @@ namespace TimeHandler
             this.MinimizeBox = false;
             this.Name = "WorkedTimeForm";
             this.ShowInTaskbar = false;
-            
             this.ResumeLayout(false);
             this.PerformLayout();
 
@@ -263,14 +264,12 @@ namespace TimeHandler
 
         private void On_GotFocus(object sender, EventArgs args)
         {
-            Console.WriteLine("Got Focus");
             this._timer.Stop();
         }
 
 
         private void On_LostFocus(object sender, EventArgs args)
         {
-            Console.WriteLine("Lost Focus");
             this.Close();
             this.Dispose();
         }
@@ -358,6 +357,40 @@ namespace TimeHandler
             return $"{hours.ToString()}:{remainder.ToString("D2")}";
         }
 
-        
+        private void DayLabelClicked(object sender, EventArgs e)
+        {
+            var label = (Label)sender;
+            DayOfWeek dow;
+            switch (label.Text.ToUpper())
+            {
+                case "M":
+                    dow = DayOfWeek.Monday;
+                    break;
+                case "T":
+                    dow = DayOfWeek.Tuesday;
+                    break;
+                case "W":
+                    dow = DayOfWeek.Wednesday;
+                    break;
+                case "R":
+                    dow = DayOfWeek.Thursday;
+                    break;
+                case "F":
+                    dow = DayOfWeek.Friday;
+                    break;
+                case "S":
+                    dow = DayOfWeek.Saturday;
+                    break;
+                case "U":
+                    dow = DayOfWeek.Sunday;
+                    break;
+                default:
+                    return;
+            }
+            if (this.OnAdjustmentRequested != null)
+            {
+                this.OnAdjustmentRequested.Invoke(new object(), dow);
+            }
+        }
     }
 }
