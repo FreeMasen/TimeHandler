@@ -32,7 +32,7 @@ namespace TimeHandler
             this.breakLimit = (uint)TimeSpan.FromMinutes(breakLimit).TotalMilliseconds;
             this.IdleCheckTimer = new Timer
             {
-                Interval = TimeSpan.FromMinutes(1).TotalMilliseconds,
+                Interval = TimeSpan.FromMinutes(0.25).TotalMilliseconds,
                 Enabled = true,
                 AutoReset = true
             };
@@ -49,7 +49,7 @@ namespace TimeHandler
             {
                 throw new Exception(GetLastError().ToString());
             }
-
+            
             return ticks.dwTime;
         }
 
@@ -58,18 +58,18 @@ namespace TimeHandler
             var idle = this.GetCurrentIdle();
             var ms = ((uint)Environment.TickCount) - idle;
             var minutes = TimeSpan.FromMilliseconds(ms).TotalMinutes;
-            if (this.HandleWake(ms))
+            if (!this.HandleWake(ms))
             {
-                return;
-            }
-            switch (this.SleepLevel)
-            {
-                case SleepState.None:
-                    this.HandleBreakStart(ms, minutes);
-                    break;
-                case SleepState.Break:
-                    this.HandleEodStart(ms, minutes);
-                    break;
+                this.lastMs = ms;
+                switch (this.SleepLevel)
+                {
+                    case SleepState.None:
+                        this.HandleBreakStart(ms, minutes);
+                        break;
+                    case SleepState.Break:
+                        this.HandleEodStart(ms, minutes);
+                        break;
+                }
             }
             this.lastMs = ms;
         }
@@ -84,6 +84,7 @@ namespace TimeHandler
             {
                 return;
             }
+            Logger.Log($"Reached Break Start {minutes} > {this.breakLimit}");
             this.SleepLevel = SleepState.Break;
             if (this.BreakLimitReached != null)
             {
@@ -100,6 +101,7 @@ namespace TimeHandler
             {
                 return;
             }
+            Logger.Log($"Reached Eod {minutes} > {this.limit}");
             this.SleepLevel = SleepState.EndOfDay;
             if (this.IdleLimitReached != null)
             {

@@ -62,6 +62,8 @@ namespace TimeHandler
                 };
             }
             this._complete?.Invoke(args);
+            this.Close();
+            this.Dispose();
         }
         public void SetEnd(DateTime end)
         {

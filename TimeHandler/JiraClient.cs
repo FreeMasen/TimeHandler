@@ -27,36 +27,7 @@ namespace TimeHandler
         private readonly string UserName = ConfigurationManager.AppSettings["JiraUserName"];
         private const string AssigneeJQL = "assignee = currentUser()";
         private const string OrderByJQL = "ORDER BY updated DESC";
-        private const string NotStarted = "Not Started";
-        private const string InProgress = "In Progress";
-        private const string CodeReview = "Code Review";
-        private const string IssuesJQL = "assignee = currentUser() AND (status changed from \"Not Started\" to \"In Progress\" during ('{0:yyyy-MM-dd}', '{1:yyyy-MM-dd}') OR status changed from \"In Progress\" to \"Code Review\" during ('{0:yyyy-MM-dd}', '{1:yyyy-MM-dd}')) ORDER BY updated DESC";
-        public async Task<List<JiraStory>> GetIssues()
-        {
-            using (var client = new HttpClient())
-            {
-                var ub = new UriBuilder
-                {
-                    Host = Host,
-                    Path = Path,
-                    Port = 443,
-                    Scheme = Scheme,
-                    Query = $"jql=project%20%3D%20%22APX%22%20AND%20resolution%20%3D%20Unresolved%20AND%20assignee%20%3D%20currentUser%28%29%20ORDER%20BY%20priority%20DESC",
-                };
-                var plainTextBytes = System.Text.Encoding.UTF8.GetBytes($"{UserName}:{Password}");
-                var un = Convert.ToBase64String(plainTextBytes);
-                var url = ub.ToString();
-
-                var request = new HttpRequestMessage()
-                {
-                    RequestUri = ub.Uri,
-                };
-                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", un);
-                var response = await client.SendAsync(request);
-                var raw = JsonConvert.DeserializeObject<RawIssues>(await response.Content.ReadAsStringAsync());
-                return raw.ToJira();
-            }
-        }
+        
 
         public async Task<List<JiraStory>> GetIssues(DateTime from, DateTime to)
         {
@@ -101,7 +72,7 @@ namespace TimeHandler
                 Path = path,
                 Port = 443,
                 Scheme = Scheme,
-                Query = query, //$"jql={query}&fields=summary,status,id,key,assignee,subtasks,issuetype&expand=changelog ",
+                Query = query,
             };
             var request = new HttpRequestMessage()
             {
@@ -130,7 +101,12 @@ namespace TimeHandler
             return $"(parent in {keys} AND {statuses}) OR proctor = currentUser() {OrderByJQL}";
         }
 
-        private static string GenerateBasicSearchJQL(string fromStatus, string middleStatus, string toStatus, DateTime fromDate, DateTime toDate)
+        private static string GenerateBasicSearchJQL(
+            string fromStatus, 
+            string middleStatus, 
+            string toStatus, 
+            DateTime fromDate, 
+            DateTime toDate)
         {
             var statuses = GenerateBothStatusesWithDates(
                 fromStatus, 
@@ -142,7 +118,12 @@ namespace TimeHandler
             return $"{AssigneeJQL} AND {statuses} {OrderByJQL}";
         }
 
-        private static string GenerateBothStatusesWithDates(string fromStatus, string middleStatus, string toStatus, DateTime fromDate, DateTime toDate)
+        private static string GenerateBothStatusesWithDates(
+            string fromStatus, 
+            string middleStatus, 
+            string toStatus, 
+            DateTime fromDate, 
+            DateTime toDate)
         {
             var dates = GenerateBetweenJQL(fromDate, toDate);
             var status1 = GenerateStatusJQL(fromStatus, middleStatus);

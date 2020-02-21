@@ -25,16 +25,17 @@ namespace TimeHandler
         private readonly ToolStripMenuItem adjustPtoMenuItem;
         private readonly ToolStripMenuItem pomodoroMenuItem;
         private readonly ToolStripMenuItem reportMenuItem;
-        private readonly IdleTracker idler;
+        private readonly ToolStripMenuItem configMenuItem;
         private readonly Pomodoro pomodoro;
         private bool PomodoroRunning = false;
         private Toast toast;
-        private DateTime? BreakStart;
 
         private TimeSpan TimerTick = TimeSpan.FromMinutes(5.0);
 
         private System.Threading.Timer _timer;
         private DateTime lastNotified = new DateTime(0);
+        private UserConfig Config;
+
         private TrayContext()
         {
             this.contextMenuStrip1 = new ContextMenuStrip();
@@ -47,6 +48,8 @@ namespace TimeHandler
             this.adjustPtoMenuItem = new ToolStripMenuItem();
             this.pomodoroMenuItem = new ToolStripMenuItem();
             this.reportMenuItem = new ToolStripMenuItem();
+            this.configMenuItem = new ToolStripMenuItem();
+            this.Config = Data.GetConfig();
 
             this.contextMenuStrip1.SuspendLayout();
             // 
@@ -63,6 +66,7 @@ namespace TimeHandler
                 this.adjustPtoMenuItem,
                 this.goHomeToolStripMenuItem,
                 this.refreshToolStripMenuItem,
+                this.configMenuItem,
                 this.exitToolStripMenuItem,
             });
             this.contextMenuStrip1.Name = "contextMenuStrip1";
@@ -98,38 +102,31 @@ namespace TimeHandler
             this.push15MenuItem.Size = new System.Drawing.Size(210, 24);
             this.push15MenuItem.Text = "Push 15";
             this.push15MenuItem.Click += new System.EventHandler((o, a) =>
-                    Data.AddEntries(new TimeEntry[] {
-                        new TimeEntry { What = TimeEntryEvent.StartOfBreak, When = DateTime.UtcNow.AddMinutes(-15) },
-                        new TimeEntry { What = TimeEntryEvent.EndOfBreak, When = DateTime.UtcNow}
-                    })
+                    Data.AddBreak(15)
             );
 
             this.push30MenuItem.Name = "push30MenuItem";
             this.push30MenuItem.Size = new System.Drawing.Size(210, 24);
             this.push30MenuItem.Text = "Push 30";
             this.push30MenuItem.Click += new System.EventHandler((o, a) =>
-                    Data.AddEntries(new TimeEntry[] {
-                        new TimeEntry { What = TimeEntryEvent.StartOfBreak, When = DateTime.UtcNow.AddMinutes(-30) },
-                        new TimeEntry { What = TimeEntryEvent.EndOfBreak, When = DateTime.UtcNow}
-                    })
+                    Data.AddBreak(30)
             );
 
             this.push60MenuItem.Name = "push60MenuItem";
             this.push60MenuItem.Size = new System.Drawing.Size(210, 24);
             this.push60MenuItem.Text = "Push Hour";
             this.push60MenuItem.Click += new System.EventHandler((o, a) =>
-                    Data.AddEntries(new TimeEntry[] {
-                        new TimeEntry { What = TimeEntryEvent.StartOfBreak, When = DateTime.UtcNow.AddHours(-1) },
-                        new TimeEntry { What = TimeEntryEvent.EndOfBreak, When = DateTime.UtcNow}
-                    })
+                    Data.AddBreak(60)
             );
 
             this.adjustPtoMenuItem.Name = "adjustPtoMenuItem";
             this.adjustPtoMenuItem.Size = new System.Drawing.Size(210, 24);
             this.adjustPtoMenuItem.Text = "Adjust PTO";
             this.adjustPtoMenuItem.Click += new EventHandler((o, a) => {
+                Logger.Log("Opening AdjustPto");
                 var frm = new AdjustPto(week =>
                 {
+                    Logger.Log($"Closing AdjustPto ${week}");
                     if (week != null)
                     {
                         Data.BulkUpsertPto(week);
@@ -151,6 +148,11 @@ namespace TimeHandler
             this.reportMenuItem.Text = "Generate Report";
             this.reportMenuItem.Click += this.GenerateReport;
 
+            this.configMenuItem.Name = "configMenuItem";
+            this.configMenuItem.Size = new System.Drawing.Size(210, 24);
+            this.configMenuItem.Text = "Configuration";
+            this.configMenuItem.Click += this.OpenConfig;
+
             this.contextMenuStrip1.ResumeLayout(false);
             this._icon = new NotifyIcon()
             {
@@ -163,10 +165,7 @@ namespace TimeHandler
             this._calc.CalculationComplete += this.OnWeekUpdated;
             this.TimerExpired += this._calc.OnRequestStartCalculation;
             this._timer = new System.Threading.Timer(this.TimerCB, null, 0, Timeout.Infinite);
-            this.idler = new IdleTracker((int)TimeSpan.FromHours(2).TotalMinutes, 15);
-            this.idler.IdleLimitReached += this.IdleLimitReached;
-            this.idler.BreakLimitReached += this.BreakLimitReached;
-            this.idler.WokeUp += new EventHandler<SleepState>(this.Wake);
+            
             this.pomodoro = new Pomodoro();
             this.pomodoro.Switch += (s, m) => this.ShowMessage(m);
             Data.DataChanged += this._calc.OnRequestStartCalculation;
@@ -248,18 +247,6 @@ namespace TimeHandler
             this.ExitThread();
         }
 
-        private void IdleLimitReached(object sender, int minutes)
-        {
-            Logger.Log($"IdleLimitReached: {minutes}");
-            this.Sleep(minutes);
-        }
-
-        private void BreakLimitReached(object sender, int minutes)
-        {
-            Logger.Log($"BreakLimitReached: {minutes}");
-            this.BreakStart = DateTime.UtcNow.AddMinutes(-minutes);
-        }
-
         private void AdjustmentRequested(object sender, DayOfWeek day)
         {
             var d = Data.GetDateFor(day);
@@ -268,56 +255,6 @@ namespace TimeHandler
                 StartPosition = FormStartPosition.CenterScreen
             };
             this.AdjustDayForm.Show();
-        }
-
-        private void Sleep(int minutes)
-        {
-            Data.AddEndOfDay(
-                DateTime.UtcNow.AddMinutes(-minutes)
-            );
-            this.TimerTick = TimeSpan.FromHours(12.0);
-        }
-
-        private void Wake(object sender, SleepState from)
-        {
-            Logger.Log($"Waking from {from}");
-            if (from == SleepState.Break && this.BreakStart.HasValue)
-            {   
-                try
-                {
-                    var start = this.BreakStart.Value;
-                    this.BreakStart = null;
-                    CreateToast(start, DateTime.UtcNow);
-                } catch (Exception ex)
-                {
-                    Logger.Log(ex.Message, true);
-                }
-            }
-            else if (from == SleepState.EndOfDay)
-            {
-                Data.AddStartOfDay();
-                this.TimerTick = TimeSpan.FromMinutes(5.0);
-                this.TimerCB(null);
-            }
-        }
-
-        private void CreateToast(DateTime start, DateTime end)
-        {
-            var now = DateTime.UtcNow;
-            Task.Run(() =>
-            {
-                this.toast = new Toast(start, this.HandleToastAnswer);
-                this.toast.SetEnd(end);
-                this.toast.ShowDialog();
-            });
-        }
-
-        private void HandleToastAnswer(TimeEntry[] entries)
-        {
-            if (entries != null)
-            {
-                Data.AddEntries(entries);
-            }
         }
 
         private void TogglePomodoro(object s, EventArgs e)
@@ -340,33 +277,22 @@ namespace TimeHandler
 
         private void GenerateReport(object s, EventArgs e)
         {
-            var dia = new FolderBrowserDialog
-            {
-                Description = "Where to save the report"
-            };
-            var success = dia.ShowDialog();
-            if (success == DialogResult.OK)
-            {
-                Task.Run(() =>
-                {
-                    var report = Data.GenerateReport(1);
-                    var fullPath = $"{dia.SelectedPath}\\{report.FileName()}.csv";
-                    using (var f = System.IO.File.CreateText(fullPath))
-                    {
-                        f.NewLine = "\n";
-                        f.AutoFlush = true;
-                        f.WriteLine(report.Headers());
-                        foreach (var day in report.Days)
-                        {
-                            f.WriteLine(day.ToCsv());
-                        }
-                        f.WriteLine(report.Totals());
-                    }
-                    ShowMessage($"Created Report at {fullPath}");
-                });
-            }
+            Data.GenerateReport(1);
         }
-        
+
+        private void OpenConfig(object sender, EventArgs e)
+        {
+            var frm = new ConfigEditor(this.Config, (updated) =>
+            {
+                if (updated != null)
+                {
+                    this.Config = updated;
+                    
+                }
+            });
+            frm.Show();
+        }
+
         /// <summary>
         /// The main entry point for the application.
         /// </summary>
@@ -379,14 +305,15 @@ namespace TimeHandler
                 Logger.Log("Starting");
                 var context = new TrayContext();
                 Application.Run(context);
-            } catch (Exception ex)
+            }
+            catch (Exception ex)
             {
                 Logger.Log(ex.Message);
                 MessageBox.Show(ex.Message, "Time Handler Error", MessageBoxButtons.OK);
             }
         }
         public static string APP_DATA_PATH = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "calendarInfo");
-        
+        public static string MY_DOCUMENTS_PATH = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
         static void EnsureAppDataFilesExist()
         {
             if (!System.IO.Directory.Exists(APP_DATA_PATH))

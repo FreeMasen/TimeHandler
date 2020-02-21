@@ -61,7 +61,8 @@ namespace TimeHandler
             var name = new ComboBox()
             {
                 Location = new Point(5, 10),
-                Width = 100
+                Width = 100,
+                Tag = entry.Id,
             };
             foreach (var e in EventOptions)
             {
@@ -77,9 +78,8 @@ namespace TimeHandler
                 Tag = entry.Id,
                 Width = 100,
             };
-            name.SelectedValueChanged += (o, e) => this.TimeValueChange(entry, entry.What, time.Value);
-            time.ValueChanged += (o, e) => this.TimeValueChange(entry, entry.What, time.Value);
-            //Data.UpdateEntry(entry.Id, entry.What, new DateTime(time.Value.Ticks, DateTimeKind.Local));
+            name.SelectedValueChanged += OnWhatValueChanged;
+            time.ValueChanged += OnTimeValueChange;
             var remove = new Button()
             {
                 Width = 20,
@@ -101,25 +101,52 @@ namespace TimeHandler
             return box;
         }
 
-        private void TimeValueChange(TimeEntry original, TimeEntryEvent updated_event, DateTime updated_time)
+        private void OnTimeValueChange(object sender, EventArgs update_event)
         {
-            Data.UpdateEntry(original.Id, updated_event, new DateTime(updated_time.Ticks, DateTimeKind.Local));
+            var dtp = (DateTimePicker)sender;
+            var original = this.Entries.Where((e) => e.Id == (int)dtp.Tag).FirstOrDefault();
+            if (original == null)
+            {
+                Logger.Log($"Invalid change to datetime picker {original} {update_event}", true);
+                return;
+            }
+            DateTime dt;
+            var daysDiff = (dtpSelectedDate.Value.Date - dtp.Value.Date).TotalDays;
+            if (daysDiff != 0)
+            {
+                dt = dtp.Value.AddDays(daysDiff);
+            }
+            else
+            {
+                dt = dtp.Value;
+            }
+            Data.UpdateEntry(original.Id, original.What, dt);
+        }
+
+        private void OnWhatValueChanged(object sender, EventArgs ev)
+        {
+            var cb = (ComboBox)sender;
+            var newWhat = EventOptions[cb.SelectedIndex];
+            var original = this.Entries.Where((e) => e.Id == (int)cb.Tag).FirstOrDefault();
+            if (original == null)
+            {
+                Logger.Log($"Invalid change to datetime picker {original} {newWhat}", true);
+                return;
+            }
+            Data.UpdateEntry(original.Id, newWhat, original.When);
         }
 
         private void btnAdd_Click(object sender, EventArgs e)
         {
             TimeEntryEvent What;
-            DateTime When;
+            var When = DateTime.Now;
             if (this.Entries.Count() > 0)
             {
                 var last = this.Entries.Last();
-                When = last.When.AddMinutes(1);
                 What = last.What.Next();
             }
             else
             {
-
-                When = DateTime.Now;
                 What = TimeEntryEvent.StartOfDay;
             }
             Data.AddEntry(new TimeEntry
@@ -134,6 +161,7 @@ namespace TimeHandler
         private void UpdateEntries()
         {
             this.Entries = Data.GetDayEntries(this.dtpSelectedDate.Value);
+            this.Entries.Sort((lhs, rhs) => lhs.When.CompareTo(rhs.When));
             Setup();
         }
 

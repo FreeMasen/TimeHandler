@@ -14,7 +14,6 @@ namespace TimeHandler
         {
             this.StartCalculation();
             this.RunCalculation += this.OnRequestStartCalculation;
-            this.AddStartOfDay();
         }
 
         public void Push30()
@@ -35,11 +34,6 @@ namespace TimeHandler
         public void AddEntry(TimeEntry entry)
         {
             Data.AddEntry(entry);
-        }
-
-        public void AddStartOfDay()
-        {
-            Data.AddStartOfDay();
         }
 
         public void FireCalculation()
@@ -316,7 +310,6 @@ namespace TimeHandler
         }
         public int Total()
         {
-            var ret = 0;
             switch (DateTime.Now.DayOfWeek)
             {
                 case DayOfWeek.Monday:

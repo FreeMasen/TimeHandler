@@ -5,6 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Diagnostics;
 using System.IO;
+using MailSlot;
 
 namespace TimeHandler
 {
@@ -36,7 +37,7 @@ namespace TimeHandler
             var kind = error ? "ERROR" : "INFO";
             var msg = $"{DateTime.Now:y-M-dTH:mm:ss.ffff},{kind},{mClass}.{mName}\"{message}\"";
             Console.WriteLine(msg, error);
-            //FileLog(message, error);
+            FileLog(message, error);
         }
 
         static void ProdLog(string message, bool error = false)
@@ -47,7 +48,6 @@ namespace TimeHandler
             }
             catch (Exception ex)
             {
-
                 FileLog(ex.Message, true);
             }
             finally

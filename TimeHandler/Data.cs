@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Data.SQLite;
-using System.Text;
+using Newtonsoft.Json;
 
 namespace TimeHandler
 {
@@ -310,69 +310,6 @@ namespace TimeHandler
             return date;
         }
 
-        public static void AddStartOfDay()
-        {
-            var now = DateTime.UtcNow;
-            using (var data = new Data())
-            {
-                if (data.HasStartOfDay())
-                {
-                    return;
-                }
-                data._AddEntry(new TimeEntry
-                {
-                    What = TimeEntryEvent.StartOfDay,
-                    When = now
-                });
-            }
-        }
-
-        public static void AddEndOfDay(DateTime? when)
-        {
-            using (var data = new Data())
-            {
-                if (data.HasEndOfDay())
-                {
-                    return;
-                }
-                if (!when.HasValue)
-                {
-                    when = DateTime.UtcNow;
-                }
-                data._AddEntry(new TimeEntry
-                {
-                    What = TimeEntryEvent.EndOfDay,
-                    When = when.Value
-                });
-            }
-        }
-
-        public bool HasStartOfDay()
-        {
-            var now = DateTime.UtcNow.Date;
-            using (var cmd = this.GenerateCommand("SELECT count(*) FROM \"entries\" WHERE \"when\" > @min AND \"when\" < @max AND \"what\" = @what"))
-            {
-                cmd.Parameters.AddWithValue("@min", now);
-                cmd.Parameters.AddWithValue("@max", now.AddDays(1));
-                cmd.Parameters.AddWithValue("@what", (int)TimeEntryEvent.StartOfDay);
-                var ct = Convert.ToInt32(cmd.ExecuteScalar());
-                return ct > 0;
-            }
-        }
-
-        public bool HasEndOfDay()
-        {
-            var now = DateTime.UtcNow.Date;
-            using (var cmd = this.GenerateCommand("SELECT count(*) FROM \"entries\" WHERE \"when\" > @min AND \"when\" < @max AND \"what\" = @what"))
-            {
-                cmd.Parameters.AddWithValue("@min", now);
-                cmd.Parameters.AddWithValue("@max", now.AddDays(1));
-                cmd.Parameters.AddWithValue("@what", (int)TimeEntryEvent.EndOfDay);
-                var ct = Convert.ToInt32(cmd.ExecuteScalar());
-                return ct > 0;
-            }
-        }
-
         public static void AddEntry(TimeEntry entry)
         {
             using (var data = new Data())
@@ -392,11 +329,21 @@ namespace TimeHandler
         
         public static void AddEntries(IEnumerable<TimeEntry> entries)
         {
-            using (var data = new Data())
+            var ev = new
             {
-                data._AddEntries(entries);
-            }
-            FireChangeEvent();
+                kind = "AddEntries",
+                entries,
+            };
+            SerializeAndSend(ev);
+        }
+        public static void AddBreak(int minutes)
+        {
+            var ev = new
+            {
+                kind = "AddBreak",
+                minutes,
+            };
+            SerializeAndSend(ev);
         }
 
         private void _AddEntries(IEnumerable<TimeEntry> entries)
@@ -456,29 +403,39 @@ namespace TimeHandler
 
         public static void UpdateEntry(int id, TimeEntryEvent what, DateTime when)
         {
-            using (var data = new Data())
+            var ev = new
             {
-                using (var cmd = data.GenerateCommand("UPDATE \"entries\" SET \"what\" = @what, \"when\" = @when WHERE id = @id"))
-                {
-                    cmd.Parameters.AddWithValue("@id", id);
-                    cmd.Parameters.AddWithValue("@what", (int)what);
-                    cmd.Parameters.AddWithValue("@when", when);
-                    cmd.ExecuteNonQuery();
-                }
-            }
-            FireChangeEvent();
+                kind = "AdjustEntry",
+                time_id = id,
+                what = (int)what,
+                when,
+            };
+            SerializeAndSend(ev);
         }
 
         public static void RemoveEntry(int id)
         {
-            using (var data = new Data())
+            var ev = new
             {
-                using (var cmd = data.GenerateCommand("DELETE FROM \"entries\" WHERE id = @id"))
+                kind = "RemoveEntry",
+                time_id = id,
+            };
+            SerializeAndSend(ev);
+        }
+
+        private static void SerializeAndSend(object msg)
+        {
+            var json = JsonConvert.SerializeObject(msg, new JsonSerializerSettings
+            {
+                ContractResolver = new Newtonsoft.Json.Serialization.DefaultContractResolver
                 {
-                    cmd.Parameters.AddWithValue("@id", id);
-                    var ct = cmd.ExecuteNonQuery();
-                    Logger.Log($"Deleted {ct} rows");
-                }
+                    NamingStrategy = new Newtonsoft.Json.Serialization.CamelCaseNamingStrategy()
+                },
+                Formatting = Formatting.None
+            });
+            using (var ms = new MailSlot.MailslotClient("time_tracker_ui"))
+            {
+                ms.SendMessage(json);
             }
         }
 
@@ -504,39 +461,15 @@ namespace TimeHandler
             }
         }
 
-        public static Report GenerateReport(int weeksInPast)
+        public static void GenerateReport(int weeksInPast)
         {
-            var entries = GetReportDays(weeksInPast);
             var monday = Monday(weeksInPast);
-            var end = monday.AddDays(7);
-            var jc = new JiraClient();
-            var jiraIssues = jc.GetIssues(monday, end).Result;
-            foreach (var issue in jiraIssues)
+            var ev = new
             {
-                foreach (var day in entries)
-                {
-                    if (issue.ShouldIncludeIn(day.Date))
-                    {
-                        day.Stories.Add(issue);
-                    }
-                }
-            }
-            entries.Sort((lhs, rhs) => lhs.Date.CompareTo(rhs.Date));
-            if (entries.Count > 0)
-            {
-                return new Report
-                {
-                    Monday = entries[0].Date,
-                    Days = entries
-                };
-            } else
-            {
-                return new Report
-                {
-                    Monday = DateTime.MinValue,
-                    Days = entries
-                };
-            }
+                kind = "GenerateReport",
+                start_date = monday.ToString("yyyy-MM-ddTH:mm:ss.fffffff"),
+            };
+            SerializeAndSend(ev);
         }
 
         private SQLiteCommand GenrateInsertCommand()
@@ -559,6 +492,10 @@ namespace TimeHandler
                 SQLiteConnection.CreateFile(path);
             }
             var ret = new SQLiteConnection($"Data Source={path};Version=3;").OpenAndReturn();
+            if (ValidatedTables)
+            {
+                return ret;
+            }
             var entriesExists = ValidateEntries(ref ret);
             if (!entriesExists) {
                 using (var cmd2 = ret.CreateCommand())
@@ -577,6 +514,11 @@ namespace TimeHandler
                     cmd.ExecuteNonQuery();
                 }
                 logsExists = ValidateEntries(ref ret);
+            }
+            var configsExists = ValidateConfigs(ref ret);
+            if (!configsExists)
+            {
+                SetupConfigs(ref ret);
             }
             ValidatedTables = entriesExists && logsExists;
             return ret;
@@ -620,6 +562,140 @@ namespace TimeHandler
                 }
             }
             return false;
+        }
+
+        private static bool ValidateConfigs(ref SQLiteConnection conn)
+        {
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = "SELECT count(*) FROM sqlite_master WHERE type='table' AND name = 'configs'";
+                var ct = Convert.ToInt32(cmd.ExecuteScalar());
+                if (ct > 0)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static UserConfig SetupConfigs(ref SQLiteConnection conn)
+        {
+            var ret = new UserConfig();
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = "CREATE TABLE \"configs\" (\"id\" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT UNIQUE, \"name\" TEXT NOT NULL UNIQUE, \"value\" TEXT)";
+                cmd.ExecuteNonQuery();
+            }
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = $"INSERT INTO \"configs\" (\"name\", \"value\") VALUES (@name, @value);";
+                foreach (var entry in ret)
+                {
+                    cmd.Parameters.AddWithValue("@name", entry.Item1);
+                    cmd.Parameters.AddWithValue("@value", entry.Item2);
+                    cmd.ExecuteNonQuery();
+                    cmd.Parameters.Clear();
+                }
+            }
+            return ret;
+        }
+
+        public static UserConfig GetConfig()
+        {
+            var ret = new UserConfig();
+            using (var conn = GetConnection())
+            {
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText = "SELECT \"name\", \"value\" FROM \"configs\"";
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            var name = reader.GetString(0);
+                            var rawValue = reader.GetValue(1);
+                            string value;
+                            if (rawValue == DBNull.Value || rawValue == null)
+                            {
+                                value = "";
+                            }
+                            else
+                            {
+                                value = (string)rawValue;
+                            }
+                            switch (name)
+                            {
+                                case "ReportPath":
+                                    ret.ReportConfig.StoragePath = value;
+                                    break;
+                                case "JiraUserName":
+                                    ret.JiraConfig.JiraUserName = value;
+                                    break;
+                                case "JiraAuthToken":
+                                    ret.JiraConfig.JiraAuthToken = value;
+                                    break;
+                                case "PomodoroWorkLength":
+                                    ret.PomorodoConfig.WorkLength = SafeParseInt(value, ret.PomorodoConfig.WorkLength);
+                                    break;
+                                case "PomodoroShortBreakLength":
+                                    ret.PomorodoConfig.ShortBreakLength = SafeParseInt(value, ret.PomorodoConfig.ShortBreakLength);
+                                    break;
+                                case "PomodoroLongBreakLength":
+                                    ret.PomorodoConfig.LongBreakLength = SafeParseInt(value, ret.PomorodoConfig.LongBreakLength);
+                                    break;
+                            }
+                        }
+                    }
+                }
+            }
+            return ret;
+        }
+
+        public static bool UpdateConfig(UserConfig config)
+        {
+            using (var conn = GetConnection())
+            {
+                var trx = conn.BeginTransaction();
+                using (var cmd = trx.Connection.CreateCommand())
+                {
+                    cmd.CommandText = "UPDATE config SET value = @value WHERE name = @name";
+                    foreach (var entry in config)
+                    {
+                        cmd.Parameters.AddWithValue("@value", entry.Item2);
+                        cmd.Parameters.AddWithValue("@name", entry.Item1);
+                        var r = cmd.ExecuteNonQuery();
+                        if (r != 1)
+                        {
+                            trx.Rollback();
+                            return false;
+                        }
+                    }
+                    trx.Commit();
+                    return true;
+                }
+            }
+        }
+
+        public static bool UpdateStoragePath(string newPath)
+        {
+            using (var conn = GetConnection())
+            {
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText = "UPDATE \"configs\" SET \"value\" = @value WHERE \"name\" = 'ReportPath';";
+                    cmd.Parameters.AddWithValue("@value", newPath);
+                    return cmd.ExecuteNonQuery() > 0;
+                }
+            }
+        }
+
+        public static int SafeParseInt(string maybe, int fallback)
+        {
+            if (int.TryParse(maybe, out var i))
+            {
+                return i;
+            }
+            return fallback;
         }
 
         private static void FireChangeEvent()
@@ -667,7 +743,6 @@ namespace TimeHandler
         }
         #endregion
     }
-
 
     public class TimeEntry
     {
